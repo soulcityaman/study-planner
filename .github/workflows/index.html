@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elite Habit Planner</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+:root{
+  --bg-dark:#0f172a;
+  --card-dark:rgba(30,41,59,.7);
+  --text-dark:#f1f5f9;
+  --bg-light:#f1f5f9;
+  --card-light:rgba(255,255,255,.7);
+  --text-light:#0f172a;
+  --accent:#22c55e;
+}
+
+body{
+  margin:0;
+  font-family:system-ui,-apple-system,BlinkMacSystemFont;
+  transition:.4s;
+  display:flex;
+  justify-content:center;
+}
+
+body.dark{
+  background:linear-gradient(135deg,#0f172a,#1e293b);
+  color:var(--text-dark);
+}
+
+body.light{
+  background:linear-gradient(135deg,#e2e8f0,#ffffff);
+  color:var(--text-light);
+}
+
+.app{
+  width:100%;
+  max-width:480px;
+  padding:16px;
+}
+
+.card{
+  backdrop-filter:blur(14px);
+  padding:18px;
+  border-radius:20px;
+  margin-bottom:16px;
+  box-shadow:0 10px 30px rgba(0,0,0,.15);
+  transition:.3s;
+}
+
+.dark .card{
+  background:var(--card-dark);
+}
+
+.light .card{
+  background:var(--card-light);
+}
+
+h2,h3{
+  margin:6px 0;
+}
+
+.top-bar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
+.toggle-theme{
+  cursor:pointer;
+  padding:6px 12px;
+  border-radius:20px;
+  border:none;
+  font-weight:bold;
+  background:var(--accent);
+}
+
+.stats{
+  font-size:14px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.progress-bar{
+  height:10px;
+  border-radius:10px;
+  overflow:hidden;
+  background:#33415533;
+}
+
+.progress-fill{
+  height:100%;
+  background:linear-gradient(90deg,#22c55e,#4ade80);
+  width:0%;
+  transition:.4s;
+  box-shadow:0 0 10px #22c55e;
+}
+
+.week-nav{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:12px;
+}
+
+button{
+  background:var(--accent);
+  border:none;
+  padding:8px 14px;
+  border-radius:12px;
+  cursor:pointer;
+  font-weight:bold;
+  transition:.2s;
+}
+
+button:hover{
+  transform:scale(1.05);
+}
+
+.grid{
+  display:grid;
+  gap:6px;
+  font-size:12px;
+}
+
+.cell{
+  background:#33415555;
+  border-radius:10px;
+  padding:8px;
+  text-align:center;
+  cursor:pointer;
+  transition:.2s;
+}
+
+.cell.checked{
+  background:linear-gradient(135deg,#22c55e,#16a34a);
+  color:#000;
+  transform:scale(1.08);
+  box-shadow:0 0 10px #22c55e;
+}
+
+.badges{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+.badge{
+  padding:6px 10px;
+  border-radius:20px;
+  background:#64748b55;
+  font-size:12px;
+}
+
+.badge.unlocked{
+  background:gold;
+  color:#000;
+  font-weight:bold;
+  box-shadow:0 0 10px gold;
+}
+
+canvas{
+  margin-top:10px;
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+<div class="card">
+<div class="top-bar">
+<h2>⭐ Level <span id="level">1</span></h2>
+<button class="toggle-theme" onclick="toggleTheme()">🌗</button>
+</div>
+<div class="stats">
+<div>🔥 Streak: <span id="streak">0</span></div>
+<div>🏆 Longest: <span id="longest">0</span></div>
+<div>XP: <span id="xp">0</span></div>
+</div>
+<div class="progress-bar"><div class="progress-fill" id="xpBar"></div></div>
+</div>
+
+<div class="card">
+<div class="week-nav">
+<button onclick="changeWeek(-1)">◀</button>
+<div id="weekLabel"></div>
+<button onclick="changeWeek(1)">▶</button>
+</div>
+<div id="grid"></div>
+<div style="margin-top:8px;font-weight:bold;">Completion: <span id="percent">0%</span></div>
+</div>
+
+<div class="card">
+<h3>📊 Weekly Analytics</h3>
+<canvas id="chart"></canvas>
+</div>
+
+<div class="card">
+<h3>🏅 Badges</h3>
+<div class="badges" id="badges"></div>
+</div>
+
+</div>
+
+<script>
+const habits=["STUDY HOURS (6-7hrs)","WAKE UP AT 6 AM","SCREEN - TIME(3 HRS MAX)","CALL TIME (1-2hrs)","ONE SAMPLE PAPER","Drink 6L of Water","SIT IN SUNLIGHT","Stretch or Exercise and Bath","SALAD OR FRUITS","Digital Detox (30 min)"];
+const startDate=new Date("2026-02-12");
+const endDate=new Date("2026-03-28");
+
+let state=JSON.parse(localStorage.getItem("habitData"))||{
+  data:{},xp:0,streak:0,longest:0,badges:{},theme:"dark"
+};
+
+let weeks=[],currentWeek=0,chart;
+
+function toggleTheme(){
+  state.theme=state.theme==="dark"?"light":"dark";
+  document.body.className=state.theme;
+  saveData();
+}
+
+function generateCalendar(){
+  let temp=new Date(startDate),week=[];
+  while(temp<=endDate){
+    week.push(new Date(temp));
+    if(week.length===7){weeks.push(week);week=[];}
+    temp.setDate(temp.getDate()+1);
+  }
+  if(week.length)weeks.push(week);
+}
+
+function renderWeek(){
+  const grid=document.getElementById("grid");
+  grid.innerHTML="";
+  const days=weeks[currentWeek];
+  document.getElementById("weekLabel").innerText=
+  `Week ${currentWeek+1} (${days[0].toLocaleDateString()} - ${days[6].toLocaleDateString()})`;
+
+  grid.className="grid";
+  grid.style.gridTemplateColumns=`repeat(${days.length+1},1fr)`;
+
+  grid.appendChild(document.createElement("div"));
+  days.forEach(d=>{
+    let el=document.createElement("div");
+    el.innerText=d.getDate();
+    grid.appendChild(el);
+  });
+
+  habits.forEach(h=>{
+    let row=document.createElement("div");
+    row.innerText=h;
+    grid.appendChild(row);
+
+    days.forEach(d=>{
+      let key=d.toISOString().split("T")[0]+"-"+h;
+      let cell=document.createElement("div");
+      cell.className="cell";
+      if(state.data[key])cell.classList.add("checked");
+      cell.onclick=()=>toggleHabit(key,cell);
+      grid.appendChild(cell);
+    });
+  });
+
+  calculateWeeklyCompletion();
+  renderGraph();
+}
+
+function toggleHabit(key,cell){
+  if(state.data[key]){
+    delete state.data[key];
+    cell.classList.remove("checked");
+    state.xp-=10;
+  }else{
+    state.data[key]=true;
+    cell.classList.add("checked");
+    state.xp+=10;
+  }
+  calculateStreak();
+  calculateLevel();
+  checkBadges();
+  saveData();
+  updateUI();
+}
+
+function calculateStreak(){
+  let streak=0,temp=new Date(startDate);
+  while(temp<=new Date()){
+    let full=true;
+    habits.forEach(h=>{
+      let key=temp.toISOString().split("T")[0]+"-"+h;
+      if(!state.data[key])full=false;
+    });
+    if(full)streak++;else streak=0;
+    temp.setDate(temp.getDate()+1);
+  }
+  state.streak=streak;
+  if(streak>state.longest)state.longest=streak;
+}
+
+function calculateLevel(){
+  state.level=Math.floor(state.xp/500)+1;
+}
+
+function calculateWeeklyCompletion(){
+  let days=weeks[currentWeek],total=days.length*habits.length,done=0;
+  days.forEach(d=>{
+    habits.forEach(h=>{
+      let key=d.toISOString().split("T")[0]+"-"+h;
+      if(state.data[key])done++;
+    });
+  });
+  document.getElementById("percent").innerText=
+  Math.round((done/total)*100)+"%";
+}
+
+function renderGraph(){
+  let days=weeks[currentWeek],data=[];
+  habits.forEach(h=>{
+    let count=0;
+    days.forEach(d=>{
+      let key=d.toISOString().split("T")[0]+"-"+h;
+      if(state.data[key])count++;
+    });
+    data.push(count);
+  });
+
+  if(chart)chart.destroy();
+  chart=new Chart(document.getElementById("chart"),{
+    type:"line",
+    data:{labels:habits,datasets:[{data:data}]},
+    options:{plugins:{legend:{display:false}}}
+  });
+}
+
+function checkBadges(){
+  if(state.xp>=1000)state.badges["1000xp"]=true;
+  if(state.streak>=3)state.badges["3day"]=true;
+  if(state.streak>=7)state.badges["7day"]=true;
+}
+
+function renderBadges(){
+  const b=document.getElementById("badges");
+  b.innerHTML="";
+  const all={"3 Day Streak":"3day","7 Day Streak":"7day","1000 XP":"1000xp"};
+  Object.keys(all).forEach(name=>{
+    let el=document.createElement("div");
+    el.className="badge";
+    if(state.badges[all[name]])el.classList.add("unlocked");
+    el.innerText=name;
+    b.appendChild(el);
+  });
+}
+
+function updateUI(){
+  document.getElementById("xp").innerText=state.xp;
+  document.getElementById("level").innerText=state.level;
+  document.getElementById("streak").innerText=state.streak;
+  document.getElementById("longest").innerText=state.longest;
+  document.getElementById("xpBar").style.width=
+  ((state.xp%500)/500)*100+"%";
+  renderBadges();
+  calculateWeeklyCompletion();
+}
+
+function changeWeek(dir){
+  currentWeek+=dir;
+  if(currentWeek<0)currentWeek=0;
+  if(currentWeek>=weeks.length)currentWeek=weeks.length-1;
+  renderWeek();
+}
+
+function saveData(){
+  localStorage.setItem("habitData",JSON.stringify(state));
+}
+
+generateCalendar();
+document.body.className=state.theme;
+calculateLevel();
+renderWeek();
+updateUI();
+</script>
+
+</body>
+</html>
